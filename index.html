@@ -151,13 +151,18 @@ select:focus{outline:2px solid var(--accent2);outline-offset:2px}
 .sheet header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .sheet .x{padding:4px 12px;background:transparent;color:var(--text);border:1px solid var(--line)}
 .bookdrawer{left:14px;bottom:calc(64px + env(safe-area-inset-bottom,0px));width:min(360px,calc(100vw - 28px));max-height:60vh;overflow:auto;padding:16px;border-radius:16px;transform:translateY(24px)}
-#bookForm{display:flex;gap:8px}
+#bookForm{display:grid;grid-template-columns:minmax(0,1fr) 82px auto;gap:8px}
+#bookForm input{width:100%;padding:10px 12px}
 #bookForm button{padding:10px 16px}
-.bk{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.bk{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .bk:first-child{border-top:0}
-.bk small{display:block;color:var(--accent2)}
+.bk-info{min-width:0;flex:1}
+.bk small{display:block;color:var(--accent2);overflow-wrap:anywhere}
 .bk small.out{color:#ffb454}
-.bk button{padding:4px 10px;font-size:.8rem;background:transparent;color:var(--muted);border:1px solid var(--line)}
+.book-controls{display:flex;align-items:center;gap:6px}
+.book-controls input{width:66px;min-width:0;padding:5px 6px;font-size:.85rem}
+.bk button{padding:5px 8px;font-size:.8rem;background:transparent;color:var(--muted);border:1px solid var(--line)}
+.bk button:disabled{opacity:.45;cursor:not-allowed}
 .setpanel{top:0;right:0;bottom:0;width:min(420px,100vw);padding:calc(18px + env(safe-area-inset-top,0px)) 18px 18px;overflow:auto;border-width:0 0 0 1px;transform:translateX(100%)}
 body.setopen .bgbtn{display:none}
 #stSearch{width:100%;margin:6px 0 4px}
@@ -174,6 +179,7 @@ body.setopen .bgbtn{display:none}
 .tabs button.on{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#06081a;border-color:transparent}
 .schoollogo{position:absolute;right:5vw;top:88px;width:clamp(80px,10vw,132px);aspect-ratio:1;object-fit:cover;border-radius:18px;background:#fff;border:2px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.35)}
 @media (max-width:640px){main h2,main>p{max-width:calc(100% - 92px)}}
+@media (max-width:390px){#bookForm{grid-template-columns:minmax(0,1fr) 72px auto}.book-controls{width:100%;justify-content:flex-end}}
 @media (prefers-reduced-motion:reduce){.blob{animation:none}.shake{animation:none}}
 </style>
 </head>
@@ -236,6 +242,7 @@ body.setopen .bgbtn{display:none}
     <form class="panel entry-form" id="entryForm" style="margin-top:32px">
       <label>Name<input id="fName" required autocomplete="off"></label>
       <label>Grade<select id="fGrade" required><option value="" disabled selected>Choose</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></label>
+      <label id="branchField" hidden>Branch<select id="fBranch"><option value="" disabled selected>Choose branch</option></select></label>
       <label>Section<select id="fSec"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
       <label>Book name<input id="fBook" list="bookOpts" required autocomplete="off"></label>
       <datalist id="bookOpts"></datalist>
@@ -243,6 +250,7 @@ body.setopen .bgbtn{display:none}
       <label>Unit<select id="fUnit"><option value="days">Days</option><option value="hours">Hours</option></select></label>
       <button type="submit">Add entry</button>
     </form>
+    <p class="note" id="loanError" role="alert" hidden></p>
 
     <p class="note" id="modeNote"></p>
     <div class="layout">
@@ -252,7 +260,7 @@ body.setopen .bgbtn{display:none}
           <label>Search student or book<input id="loanSearch" type="search" placeholder="Type a name or book"></label>
           <label>Grade<select id="loanGrade"><option value="">All grades</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="other">Other</option></select></label>
           <label>Loan status<select id="loanStatus"><option value="all">All loans</option><option value="out">Not returned</option><option value="overdue">Overdue</option><option value="returned">Returned</option></select></label>
-          <label>Sort by<select id="loanSort"><option value="recent">Most recent</option><option value="due">Due date</option><option value="student">Student A–Z</option></select></label>
+          <label>Sort by<select id="loanSort"><option value="recent">Most recent</option><option value="due">Due date</option><option value="student">Student A-Z</option></select></label>
           <button class="clear-filters" id="clearLoanFilters" type="button">Clear</button>
         </div>
         <div class="dash" id="dash"></div>
@@ -267,7 +275,8 @@ body.setopen .bgbtn{display:none}
   <button class="booktab" id="bookTab" type="button" aria-expanded="false">Books</button>
   <section class="sheet bookdrawer" id="bookDrawer" aria-label="Library books">
     <header><strong>Library books</strong><button class="x" id="bookClose" type="button" aria-label="Close">\u00D7</button></header>
-    <form id="bookForm"><input id="bookIn" placeholder="Add a book to the library" required autocomplete="off"><button type="submit">Add</button></form>
+    <form id="bookForm"><input id="bookIn" placeholder="Book title" aria-label="Book title" required autocomplete="off"><input id="bookQty" type="number" min="1" step="1" placeholder="Copies" aria-label="Copies to add" required><button type="submit">Add</button></form>
+    <p class="note" style="margin:8px 0 0">Older titles start at 0 copies until you enter their totals. Available = total copies minus unreturned loans.</p>
     <div id="bookList" style="margin-top:12px"></div>
   </section>
   <aside class="sheet setpanel" id="setPanel" aria-label="Settings">
@@ -325,6 +334,27 @@ if(useCloud){
 }
 
 const $ = id => document.getElementById(id);
+const BRANCHES = {
+  "11": ["Humanities", "Scientific"],
+  "12": ["Life Sciences", "General Sciences", "Sociology & Economics"]
+};
+function updateBranchOptions(){
+  const select = $("fBranch"), field = $("branchField"), choices = BRANCHES[$("fGrade").value] || [];
+  const previous = select.value;
+  select.textContent = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = ""; placeholder.disabled = true; placeholder.selected = true; placeholder.textContent = "Choose branch";
+  select.appendChild(placeholder);
+  choices.forEach(name => {
+    const option = document.createElement("option"); option.value = name; option.textContent = name; select.appendChild(option);
+  });
+  field.hidden = !choices.length;
+  select.required = choices.length > 0;
+  if(choices.includes(previous)) select.value = previous;
+}
+function setLoanError(message){
+  const el = $("loanError"); el.textContent = message; el.hidden = !message;
+}
 async function sha256(text){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,"0")).join("");
@@ -344,8 +374,9 @@ async function cloudLogin(email, pw){
     await auth.signInWithEmailAndPassword(email, pw);
     docRef = db.collection("library").doc("main");
     unsub = docRef.onSnapshot(snap => {
-      entries = snap.exists ? (snap.data().list || []) : [];
-      books = snap.exists ? (snap.data().books || []) : [];
+      const data = snap.exists ? snap.data() : {};
+      entries = Array.isArray(data.list) ? data.list : [];
+      books = normalizeBooks(data.books, entries);
       renderDash();
     }, err => console.error(err));
     $("err").textContent = ""; $("pw").value = ""; $("em").value = ""; show(true);
@@ -371,6 +402,8 @@ async function tryLogin(){
 }
 $("go").addEventListener("click", tryLogin);
 [$("em"), $("pw")].forEach(el => el.addEventListener("keydown", e => { if(e.key === "Enter") tryLogin(); }));
+$("fGrade").addEventListener("change", updateBranchOptions);
+updateBranchOptions();
 $("out").addEventListener("click", () => {
   if(useCloud){ if(unsub) unsub(); unsub = null; docRef = null; entries = []; books = []; renderDash(); auth.signOut(); }
   closePanels(); show(false);
@@ -379,7 +412,39 @@ $("out").addEventListener("click", () => {
 /* ====== DASHBOARD ====== */
 const GRADES = ["7", "8", "9", "10", "11", "12"], SECS = ["A", "B", "C", "D"];
 let entries = [], books = [], curStudent = null, curGrade = "7", curSec = "A";
-if(!useCloud){ try{ entries = JSON.parse(localStorage.getItem("entries") || "[]"); books = JSON.parse(localStorage.getItem("books") || "[]"); }catch(e){ entries = []; books = []; } }
+function normalizeBooks(raw, loanList){
+  const byName = new Map();
+  (Array.isArray(raw) ? raw : []).forEach(item => {
+    const name = String(typeof item === "string" ? item : (item && item.name) || "").trim();
+    if(!name) return;
+    const n = typeof item === "string" ? 0 : Number(item.quantity);
+    const quantity = Number.isSafeInteger(n) && n >= 0 ? n : 0;
+    const key = name.toLocaleLowerCase();
+    if(byName.has(key)) byName.get(key).quantity += quantity;
+    else byName.set(key, {name, quantity});
+  });
+  (Array.isArray(loanList) ? loanList : []).forEach(en => {
+    const name = String(en && en.book || "").trim(), key = name.toLocaleLowerCase();
+    if(name && !byName.has(key)) byName.set(key, {name, quantity:0});
+  });
+  return [...byName.values()];
+}
+function borrowedCopies(name, loanList){
+  const key = String(name || "").trim().toLocaleLowerCase();
+  return (Array.isArray(loanList) ? loanList : entries).filter(en =>
+    !en.returned && String(en.book || "").trim().toLocaleLowerCase() === key
+  ).length;
+}
+function availableCopies(book, loanList){
+  return Math.max(0, Number(book && book.quantity || 0) - borrowedCopies(book && book.name, loanList));
+}
+if(!useCloud){
+  try{
+    entries = JSON.parse(localStorage.getItem("entries") || "[]");
+    if(!Array.isArray(entries)) entries = [];
+    books = normalizeBooks(JSON.parse(localStorage.getItem("books") || "[]"), entries);
+  }catch(e){ entries = []; books = []; }
+}
 function saveEntries(){
   if(useCloud){
     if(docRef) docRef.set({list: JSON.parse(JSON.stringify(entries)), books: books.slice()})
@@ -387,6 +452,41 @@ function saveEntries(){
     return;
   }
   try{ localStorage.setItem("entries", JSON.stringify(entries)); localStorage.setItem("books", JSON.stringify(books)); }catch(e){}
+}
+
+async function addLoan(en, bookName){
+  if(!useCloud){ entries.unshift(en); saveEntries(); return true; }
+  if(!docRef){ setLoanError("The shared library is still loading. Try again in a moment."); return false; }
+  let latestEntries = null, latestBooks = null;
+  try{
+    await db.runTransaction(async transaction => {
+      const snap = await transaction.get(docRef);
+      const data = snap.exists ? snap.data() : {};
+      const list = Array.isArray(data.list) ? data.list.slice() : [];
+      const catalog = normalizeBooks(data.books, list);
+      latestEntries = list; latestBooks = catalog;
+      const book = catalog.find(item => item.name.toLocaleLowerCase() === bookName.toLocaleLowerCase());
+      if(!book || availableCopies(book, list) <= 0){
+        const error = new Error("No copies of this book are currently available.");
+        error.code = "library/out-of-stock";
+        throw error;
+      }
+      list.unshift(Object.assign({}, en, {book:book.name}));
+      latestEntries = list;
+      transaction.set(docRef, Object.assign({}, data, {list, books:catalog}));
+    });
+    entries = latestEntries; books = latestBooks;
+    return true;
+  }catch(error){
+    if(latestEntries){ entries = latestEntries; books = latestBooks; renderDash(); }
+    if(error && error.code === "library/out-of-stock"){
+      setLoanError("No copies of this book are available. Update its copy count in Books after stock is added.");
+    }else{
+      console.error(error);
+      setLoanError("Could not save the loan. Check the connection and try again.");
+    }
+    return false;
+  }
 }
 
 function filteredEntries(now){
@@ -469,22 +569,31 @@ $("clearLoanFilters").addEventListener("click", () => {
   renderDash(); $("loanSearch").focus();
 });
 
-$("entryForm").addEventListener("submit", e => {
+$("entryForm").addEventListener("submit", async e => {
   e.preventDefault();
-  entries.unshift({
+  const title = $("fBook").value.trim();
+  const catalogBook = books.find(b => b.name.toLocaleLowerCase() === title.toLocaleLowerCase());
+  if(!catalogBook){ setLoanError("Choose a book from the library inventory. Add its title and copies in Books first."); return; }
+  if(availableCopies(catalogBook) <= 0){ setLoanError("No copies of this book are available. Add copies in Books before creating a loan."); return; }
+  const grade = $("fGrade").value.trim(), branch = $("fBranch").value;
+  if(BRANCHES[grade] && !BRANCHES[grade].includes(branch)){ setLoanError("Choose a branch for Grade " + grade + "."); return; }
+  const en = {
     name: $("fName").value.trim(),
-    grade: $("fGrade").value.trim(),
+    grade,
+    branch: branch || "",
     section: $("fSec").value,
-    book: $("fBook").value.trim(),
+    book: catalogBook.name,
     duration: $("fDur").value.trim() + " " + ($("fDur").value.trim() === "1" ? $("fUnit").value.slice(0,-1) : $("fUnit").value),
     unit: $("fUnit").value,
     dueAt: Date.now() + parseFloat($("fDur").value) * ($("fUnit").value === "hours" ? 36e5 : 864e5),
     date: new Date().toLocaleDateString()
-  });
-  const newBook = $("fBook").value.trim();   // new books are added to the library list automatically
-  if(newBook && !books.some(b => b.toLowerCase() === newBook.toLowerCase())) books.unshift(newBook);
-  saveEntries(); renderDash();
-  e.target.reset(); $("fName").focus();
+  };
+  const submit = e.target.querySelector('button[type="submit"]');
+  submit.disabled = true; setLoanError("");
+  try{
+    if(!await addLoan(en, catalogBook.name)) return;
+    renderDash(); e.target.reset(); updateBranchOptions(); $("fName").focus();
+  }finally{ submit.disabled = false; }
 });
 /* ====== COUNTDOWN ====== */
 function fmt(ms){
@@ -544,7 +653,7 @@ $("eye").addEventListener("click", () => {
 function renderExtras(){
   renderBooks(); renderSettings();
   const dl = $("bookOpts"); dl.textContent = "";
-  books.forEach(b => { const o = document.createElement("option"); o.value = b; dl.appendChild(o); });
+  books.filter(b => availableCopies(b) > 0).forEach(b => { const o = document.createElement("option"); o.value = b.name; dl.appendChild(o); });
 }
 function renderBooks(){
   const box = $("bookList"); box.textContent = "";
@@ -553,15 +662,30 @@ function renderBooks(){
     const p = document.createElement("div"); p.className = "empty"; p.style.padding = "20px 8px";
     p.textContent = "No books yet. Add the books your library has."; box.appendChild(p); return;
   }
-  books.forEach((name, i) => {
-    const out = entries.filter(e => !e.returned && (e.book || "").toLowerCase() === name.toLowerCase());
+  books.forEach((book, i) => {
+    const out = borrowedCopies(book.name), available = availableCopies(book);
     const r = document.createElement("div"); r.className = "bk";
-    const t = document.createElement("div");
-    const b = document.createElement("b"); b.textContent = name;
-    const s = document.createElement("small"); s.className = out.length ? "out" : "";
-    s.textContent = out.length ? "Borrowed by " + out.map(e => e.name).join(", ") : "Available";
+    const t = document.createElement("div"); t.className = "bk-info";
+    const b = document.createElement("b"); b.textContent = book.name;
+    const s = document.createElement("small"); s.className = available ? "" : "out";
+    s.textContent = "Available: " + available + " · " + out + " on loan · " + book.quantity + " total";
     t.append(b, s);
-    r.append(t, mkBtn("Remove", () => { books.splice(i, 1); saveEntries(); renderExtras(); }));
+    const controls = document.createElement("div"); controls.className = "book-controls";
+    const qty = document.createElement("input"); qty.type = "number"; qty.min = String(out); qty.step = "1"; qty.value = String(book.quantity);
+    qty.setAttribute("aria-label", "Total copies of " + book.name);
+    qty.addEventListener("input", () => qty.setCustomValidity(""));
+    const save = mkBtn("Save", () => {
+      const next = Number(qty.value);
+      if(!Number.isSafeInteger(next) || next < out){
+        qty.setCustomValidity("Total copies cannot be fewer than the copies currently on loan."); qty.reportValidity(); return;
+      }
+      book.quantity = next; saveEntries(); renderDash();
+    });
+    const remove = mkBtn("Remove", () => { if(borrowedCopies(book.name)) return; books.splice(i, 1); saveEntries(); renderDash(); });
+    remove.disabled = out > 0;
+    if(remove.disabled) remove.title = "Return outstanding copies before removing this book.";
+    controls.append(qty, save, remove);
+    r.append(t, controls);
     box.appendChild(r);
   });
 }
@@ -578,11 +702,14 @@ function row(dl, label, value){
   const dt = document.createElement("dt"), dd = document.createElement("dd");
   dt.textContent = label; dd.textContent = value; dl.append(dt, dd);
 }
-function classOf(e){   // works for new entries (grade + section) and older ones typed as text, like "7A"
+function classOf(e){   // supports older entries typed as text, like "7A"
   const m = String(e.grade || "").match(/(\d+)\s*([A-Da-d])?/);
-  return {g: m ? m[1] : "", sec: String(e.section || (m && m[2]) || "").toUpperCase()};
+  return {g: m ? m[1] : "", sec: String(e.section || (m && m[2]) || "").toUpperCase(), branch:String(e.branch || "").trim()};
 }
-function gl(e){ const c = classOf(e); return "Grade " + (c.g ? c.g + c.sec : (e.grade || "?")); }
+function gl(e){
+  const c = classOf(e), grade = "Grade " + (c.g ? c.g : (e.grade || "?"));
+  return grade + (c.branch ? " · " + c.branch : "") + (c.sec ? (c.branch ? " · " : "") + c.sec : "");
+}
 function gradeKey(g){ return GRADES.includes(g) ? g : "other"; }
 function secKey(sc){ return SECS.includes(sc) ? sc : "none"; }
 function renderSettings(){
@@ -666,8 +793,19 @@ $("bookClose").addEventListener("click", closeBooks);
 $("bookForm").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("bookIn").value.trim();
-  if(name && !books.some(b => b.toLowerCase() === name.toLowerCase())){ books.unshift(name); saveEntries(); renderExtras(); }
-  $("bookIn").value = "";
+  const copies = Number($("bookQty").value);
+  if(!name || !Number.isSafeInteger(copies) || copies < 1){
+    $("bookQty").setCustomValidity("Enter a whole number of copies greater than zero."); $("bookQty").reportValidity(); return;
+  }
+  $("bookQty").setCustomValidity("");
+  const existing = books.find(b => b.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  if(existing){
+    const total = existing.quantity + copies;
+    if(!Number.isSafeInteger(total)){ $("bookQty").setCustomValidity("That total is too large."); $("bookQty").reportValidity(); return; }
+    existing.quantity = total;
+  }else books.unshift({name, quantity:copies});
+  saveEntries(); renderDash();
+  $("bookIn").value = ""; $("bookQty").value = "";
 });
 $("setBtn").addEventListener("click", () => { closeBooks(); $("setPanel").classList.add("open"); document.body.classList.add("setopen"); renderSettings(); });
 $("setClose").addEventListener("click", closeSettings);
