@@ -106,7 +106,13 @@ select:focus{outline:2px solid var(--accent2);outline-offset:2px}
 .editbox input,.editbox select{padding:8px 10px;font-size:.9rem;width:auto;flex:1}
 .entry.returned{opacity:.6;border-left-color:var(--muted)}
 .cd.done{color:var(--muted);font-size:1rem;font-weight:500}
+.loan-filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(3,minmax(120px,1fr)) auto;gap:10px;margin:0 0 16px}
+.loan-filters label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:.82rem}
+.loan-filters input,.loan-filters select{width:100%;padding:10px 12px;font-size:.92rem}
+.loan-filters .clear-filters{align-self:end;padding:10px 12px;background:transparent;color:var(--text);border:1px solid var(--line);font-size:.88rem}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.side{order:-1;position:static}}
+@media (max-width:760px){.loan-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.loan-filters label:first-child{grid-column:1/-1}}
+@media (max-width:420px){.loan-filters{grid-template-columns:1fr}.loan-filters label:first-child{grid-column:auto}}
 .stack{flex-direction:column}
 .stack input,.stack button{width:100%}
 .pwwrap{position:relative;width:100%}
@@ -242,6 +248,13 @@ body.setopen .bgbtn{display:none}
     <div class="layout">
       <div>
         <div class="dash-head"><h3>Dashboard</h3><span class="count" id="count"></span></div>
+        <div class="loan-filters" role="search" aria-label="Filter library loans">
+          <label>Search student or book<input id="loanSearch" type="search" placeholder="Type a name or book"></label>
+          <label>Grade<select id="loanGrade"><option value="">All grades</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="other">Other</option></select></label>
+          <label>Loan status<select id="loanStatus"><option value="all">All loans</option><option value="out">Not returned</option><option value="overdue">Overdue</option><option value="returned">Returned</option></select></label>
+          <label>Sort by<select id="loanSort"><option value="recent">Most recent</option><option value="due">Due date</option><option value="student">Student A–Z</option></select></label>
+          <button class="clear-filters" id="clearLoanFilters" type="button">Clear</button>
+        </div>
         <div class="dash" id="dash"></div>
       </div>
       <aside class="panel side">
@@ -251,14 +264,14 @@ body.setopen .bgbtn{display:none}
       </aside>
     </div>
   </main>
-  <button class="booktab" id="bookTab" type="button" aria-expanded="false">Books ▴</button>
+  <button class="booktab" id="bookTab" type="button" aria-expanded="false">Books</button>
   <section class="sheet bookdrawer" id="bookDrawer" aria-label="Library books">
-    <header><strong>Library books</strong><button class="x" id="bookClose" type="button" aria-label="Close">×</button></header>
+    <header><strong>Library books</strong><button class="x" id="bookClose" type="button" aria-label="Close">\u00D7</button></header>
     <form id="bookForm"><input id="bookIn" placeholder="Add a book to the library" required autocomplete="off"><button type="submit">Add</button></form>
     <div id="bookList" style="margin-top:12px"></div>
   </section>
   <aside class="sheet setpanel" id="setPanel" aria-label="Settings">
-    <header><strong>Settings</strong><button class="x" id="setClose" type="button" aria-label="Close">×</button></header>
+    <header><strong>Settings</strong><button class="x" id="setClose" type="button" aria-label="Close">\u00D7</button></header>
     <h3 style="margin:0 0 6px">Students</h3>
     <input id="stSearch" placeholder="Search students" autocomplete="off">
     <div id="stTabs"></div>
@@ -326,7 +339,7 @@ function fail(msg){
   $("card").classList.remove("shake"); void $("card").offsetWidth; $("card").classList.add("shake");
 }
 async function cloudLogin(email, pw){
-  $("go").disabled = true; $("err").textContent = "Signing in…";
+  $("go").disabled = true; $("err").textContent = "Signing in\u2026";
   try{
     await auth.signInWithEmailAndPassword(email, pw);
     docRef = db.collection("library").doc("main");
@@ -338,7 +351,7 @@ async function cloudLogin(email, pw){
     $("err").textContent = ""; $("pw").value = ""; $("em").value = ""; show(true);
   }catch(e){
     const net = e && e.code === "auth/network-request-failed";
-    fail(net ? "Can’t reach the server. Check your internet connection." : "Wrong email or password.");
+    fail(net ? "Can\u2019t reach the server. Check your internet connection." : "Wrong email or password.");
   }
   $("go").disabled = false;
 }
@@ -376,27 +389,50 @@ function saveEntries(){
   try{ localStorage.setItem("entries", JSON.stringify(entries)); localStorage.setItem("books", JSON.stringify(books)); }catch(e){}
 }
 
+function filteredEntries(now){
+  const q = $("loanSearch").value.trim().toLocaleLowerCase();
+  const gradeFilter = $("loanGrade").value;
+  const statusFilter = $("loanStatus").value;
+  const sort = $("loanSort").value;
+  const result = entries.filter(en => {
+    const c = classOf(en), grade = c.g;
+    if(q && ![en.name, en.book].some(v => String(v || "").toLocaleLowerCase().includes(q))) return false;
+    if(gradeFilter && (gradeFilter === "other" ? GRADES.includes(grade) : grade !== gradeFilter)) return false;
+    if(statusFilter === "out" && en.returned) return false;
+    if(statusFilter === "returned" && !en.returned) return false;
+    if(statusFilter === "overdue" && (en.returned || !en.dueAt || Number(en.dueAt) > now)) return false;
+    return true;
+  });
+  if(sort === "due"){
+    result.sort((a,b) => (Number(a.dueAt) || Infinity) - (Number(b.dueAt) || Infinity));
+  }else if(sort === "student"){
+    result.sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")) || String(a.book || "").localeCompare(String(b.book || "")));
+  }
+  return result;
+}
+
 function renderDash(){
   const dash = $("dash");
   dash.textContent = "";
-  $("count").textContent = entries.length + (entries.length === 1 ? " entry" : " entries");
-  if(!entries.length){
+  const visible = filteredEntries(Date.now());
+  $("count").textContent = "Showing " + visible.length + " of " + entries.length + (entries.length === 1 ? " entry" : " entries");
+  if(!visible.length){
     const d = document.createElement("div");
     d.className = "empty";
-    d.textContent = "No entries yet. Add one with the form above.";
+    d.textContent = entries.length ? "No loans match these filters. Try changing or clearing them." : "No entries yet. Add one with the form above.";
     dash.appendChild(d);
     renderExtras();
     tick();
     return;
   }
-  entries.forEach((en, i) => {
+  visible.forEach(en => {
     const card = document.createElement("div"); card.className = "entry";
     const h = document.createElement("h4");
     h.textContent = en.name + " \u2013 " + en.duration + " \u2013 " + en.book;   // title format
     const g = document.createElement("span"); g.className = "badge"; g.textContent = gl(en);
     const w = document.createElement("span"); w.className = "when"; w.textContent = en.date;
     const x = document.createElement("button"); x.className = "del"; x.type = "button"; x.textContent = "Delete";
-    x.addEventListener("click", () => { entries.splice(i, 1); saveEntries(); renderDash(); });
+    x.addEventListener("click", () => { const i = entries.indexOf(en); if(i >= 0) entries.splice(i, 1); saveEntries(); renderDash(); });
     const cd = document.createElement("div"); cd.className = "cd";
     if(en.returned){ cd.dataset.done = "1"; cd.className = "cd done"; cd.textContent = "Returned " + (en.returnedOn || ""); card.classList.add("returned"); }
     else if(en.dueAt){ cd.dataset.due = en.dueAt; }
@@ -425,6 +461,13 @@ function renderDash(){
   renderExtras();
   tick();
 }
+
+$("loanSearch").addEventListener("input", renderDash);
+[$("loanGrade"), $("loanStatus"), $("loanSort")].forEach(el => el.addEventListener("change", renderDash));
+$("clearLoanFilters").addEventListener("click", () => {
+  $("loanSearch").value = ""; $("loanGrade").value = ""; $("loanStatus").value = "all"; $("loanSort").value = "recent";
+  renderDash(); $("loanSearch").focus();
+});
 
 $("entryForm").addEventListener("submit", e => {
   e.preventDefault();
