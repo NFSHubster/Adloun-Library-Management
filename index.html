@@ -450,7 +450,7 @@ $("out").addEventListener("click", () => {
 
 /* ====== DASHBOARD ====== */
 const GRADES = ["7", "8", "9", "10", "11", "12"], SECS = ["A", "B", "C", "D"];
-let entries = [], books = [], curStudent = null, curGrade = "7", curSec = "A";
+let entries = [], books = [], curStudent = null, curGrade = "7", curSec = "A", curBranch = "";
 let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCalendarDate = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
 function unitLabel(unit, amount){
@@ -892,29 +892,47 @@ function renderSettings(){
   }
   const all = [...m.values()], q = $("stSearch").value.trim().toLowerCase();
   const gKeys = all.some(s => gradeKey(s.g) === "other") ? GRADES.concat("other") : GRADES;
-  if(!gKeys.includes(curGrade)) curGrade = "7";
+  if(!gKeys.includes(curGrade)){ curGrade = "7"; curBranch = ""; }
   const inGrade = all.filter(s => gradeKey(s.g) === curGrade);
-  const sKeys = inGrade.some(s => secKey(s.sec) === "none") ? SECS.concat("none") : SECS;
+  const branches = BRANCHES[curGrade] || [];
+  if(!branches.includes(curBranch)) curBranch = "";
+  const branchFiltered = curBranch ? inGrade.filter(s => classOf(s.first).branch === curBranch) : inGrade;
+  const sKeys = branchFiltered.some(s => secKey(s.sec) === "none") ? SECS.concat("none") : SECS;
   if(!sKeys.includes(curSec)) curSec = "A";
   if(!q){
     const gRow = document.createElement("div"); gRow.className = "tabs";
     gKeys.forEach(gk => {
       const n = all.filter(s => gradeKey(s.g) === gk).length;
-      const b = mkBtn((gk === "other" ? "Other" : "Grade " + gk) + (n ? " (" + n + ")" : ""), () => { curGrade = gk; curSec = "A"; renderSettings(); });
+      const b = mkBtn((gk === "other" ? "Other" : "Grade " + gk) + (n ? " (" + n + ")" : ""), () => { curGrade = gk; curSec = "A"; curBranch = ""; renderSettings(); });
       if(gk === curGrade) b.className = "on";
       gRow.appendChild(b);
     });
+    const rows = [gRow];
+    if(branches.length){
+      const branchRow = document.createElement("div"); branchRow.className = "tabs branch-tabs";
+      const allBranches = mkBtn("All branches (" + inGrade.length + ")", () => { curBranch = ""; curSec = "A"; renderSettings(); });
+      if(!curBranch) allBranches.className = "on";
+      branchRow.appendChild(allBranches);
+      branches.forEach(branch => {
+        const count = inGrade.filter(s => classOf(s.first).branch === branch).length;
+        const button = mkBtn(branch + " (" + count + ")", () => { curBranch = branch; curSec = "A"; renderSettings(); });
+        if(curBranch === branch) button.className = "on";
+        branchRow.appendChild(button);
+      });
+      rows.push(branchRow);
+    }
     const sRow = document.createElement("div"); sRow.className = "tabs sub";
     sKeys.forEach(sk => {
-      const n = inGrade.filter(s => secKey(s.sec) === sk).length;
+      const n = branchFiltered.filter(s => secKey(s.sec) === sk).length;
       const label = sk === "none" ? "No section" : (curGrade === "other" ? "Class " : "Grade " + curGrade) + sk;
       const b = mkBtn(label + (n ? " (" + n + ")" : ""), () => { curSec = sk; renderSettings(); });
       if(sk === curSec) b.className = "on";
       sRow.appendChild(b);
     });
-    tabs.append(gRow, sRow);
+    rows.push(sRow);
+    tabs.append(...rows);
   }
-  const arr = (q ? all.filter(s => s.name.toLowerCase().includes(q)) : inGrade.filter(s => secKey(s.sec) === curSec))
+  const arr = (q ? all.filter(s => s.name.toLowerCase().includes(q)) : branchFiltered.filter(s => secKey(s.sec) === curSec))
     .sort((a, b) => a.name.localeCompare(b.name));
   if(!arr.length){
     const p = document.createElement("div"); p.className = "empty"; p.style.padding = "24px 8px";
